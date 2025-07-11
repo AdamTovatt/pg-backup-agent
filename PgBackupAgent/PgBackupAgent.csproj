@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-PgBackupAgent-d112e56a-ba1b-49cf-aef1-e5ef6e712828</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ByteShelfClient" Version="1.1.1" />
+    <PackageReference Include="ByteShelfCommon" Version="1.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="PgDump" Version="1.0.2" />
+  </ItemGroup>
+</Project>

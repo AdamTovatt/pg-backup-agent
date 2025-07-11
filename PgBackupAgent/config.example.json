@@ -1,0 +1,17 @@
+{
+  "postgres": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "postgres",
+    "password": "your_password_here",
+    "database": "your_database_name"
+  },
+  "byteShelf": {
+    "baseUrl": "https://your-byteshelf-server.com",
+    "apiKey": "your_api_key_here_minimum_16_characters"
+  },
+  "retention": {
+    "retentionDays": 30,
+    "timeoutMinutes": 60
+  }
+} 

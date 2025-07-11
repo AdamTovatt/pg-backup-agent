@@ -1,0 +1,6 @@
+.vs
+TestResults
+PgBackupAgent/bin/*
+PgBackupAgent/obj/*
+PgBackupAgentTests/bin/*
+PgBackupAgentTests/obj/*
