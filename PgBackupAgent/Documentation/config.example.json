@@ -14,4 +14,4 @@
     "retentionPolicyPath": "/path/to/retention-policy.json",
     "timeoutMinutes": 60
   }
-} 
+}

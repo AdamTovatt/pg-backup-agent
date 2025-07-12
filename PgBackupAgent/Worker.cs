@@ -1,4 +1,5 @@
 using PgBackupAgent.Configuration.Agent;
+using PgBackupAgent.Services.Backup;
 
 namespace PgBackupAgent
 {
@@ -6,11 +7,13 @@ namespace PgBackupAgent
     {
         private readonly ILogger<Worker> _logger;
         private readonly AgentConfiguration _configuration;
+        private readonly IBackupOrchestrator _backupOrchestrator;
 
-        public Worker(ILogger<Worker> logger, AgentConfiguration configuration)
+        public Worker(ILogger<Worker> logger, AgentConfiguration configuration, IBackupOrchestrator backupOrchestrator)
         {
             _logger = logger;
             _configuration = configuration;
+            _backupOrchestrator = backupOrchestrator;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,10 +25,16 @@ namespace PgBackupAgent
             _logger.LogInformation("Retention Policy Path: {RetentionPolicyPath}", _configuration.Backup.RetentionPolicyPath);
             _logger.LogInformation("Timeout Minutes: {TimeoutMinutes}", _configuration.Backup.TimeoutMinutes);
 
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-                await Task.Delay(1000, stoppingToken);
+                _logger.LogInformation("Starting backup operation at: {time}", DateTimeOffset.Now);
+                await _backupOrchestrator.PerformBackupAsync(stoppingToken);
+                _logger.LogInformation("Completed backup operation at: {time}", DateTimeOffset.Now);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during backup operation");
+                throw; // Re-throw to ensure the service exits with error code
             }
         }
     }

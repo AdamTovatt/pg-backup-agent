@@ -10,23 +10,19 @@
     },
     {
       "keepEvery": "4.00:00:00",
-      "duration": "44.00:00:00"
-    },
-    {
-      "keepEvery": "5.00:00:00",
       "duration": "74.00:00:00"
     },
     {
-      "keepEvery": "7.00:00:00",
+      "keepEvery": "8.00:00:00",
       "duration": "194.00:00:00"
     },
     {
-      "keepEvery": "14.00:00:00",
+      "keepEvery": "16.00:00:00",
       "duration": "374.00:00:00"
     },
     {
-      "keepEvery": "30.00:00:00",
+      "keepEvery": "32.00:00:00",
       "duration": null
     }
   ]
-} 
+}
