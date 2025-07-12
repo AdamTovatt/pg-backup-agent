@@ -42,5 +42,15 @@ namespace PgBackupAgent.Configuration.FileRetention
             KeepEvery = keepEvery;
             Duration = duration;
         }
+
+        /// <summary>
+        /// Returns a string representation of the retention rule.
+        /// </summary>
+        /// <returns>A string describing the retention rule.</returns>
+        public override string ToString()
+        {
+            string durationText = Duration != null ? $" for {Duration}" : " indefinitely";
+            return $"Keep every {KeepEvery}{durationText}";
+        }
     }
 }

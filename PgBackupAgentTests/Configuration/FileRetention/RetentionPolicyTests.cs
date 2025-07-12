@@ -6,339 +6,200 @@ namespace PgBackupAgentTests.Configuration.FileRetention
     public class RetentionPolicyTests
     {
         [TestMethod]
-        public void ShouldKeepFile_WithDailyRule_KeepsCorrectFiles()
+        public void GetRetentionRuleByDate_WithExamplePolicy_ReturnsCorrectRules()
         {
             // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("1.00:00:00", "7.00:00:00") // Keep every day for 7 days
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Files from different days
-            DateTime file1 = new DateTime(2024, 1, 9, 3, 0, 0);  // Jan 9th - should be kept (6 days old)
-            DateTime file2 = new DateTime(2024, 1, 10, 15, 30, 0); // Jan 10th - should be kept (5 days old)
-            DateTime file3 = new DateTime(2024, 1, 7, 23, 0, 0);  // Jan 7th - should be deleted (8 days old)
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(file1, currentDate), "File from Jan 8th should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(file2, currentDate), "File from Jan 9th should be kept");
-            Assert.IsFalse(policy.ShouldKeepFile(file3, currentDate), "File from Jan 7th should be deleted");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithWeeklyRule_KeepsCorrectFiles()
-        {
-            // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("7.00:00:00", "30.00:00:00") // Keep every week for 30 days
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th (Monday)
-
-            // Files from different weeks
-            DateTime file1 = new DateTime(2024, 1, 8, 3, 0, 0);   // Jan 8th (Monday) - should be kept (within 30 days)
-            DateTime file2 = new DateTime(2024, 1, 1, 15, 30, 0);  // Jan 1st (Monday) - should be kept (within 30 days)
-            DateTime file3 = new DateTime(2023, 12, 15, 23, 0, 0); // Dec 15th (Friday) - should be deleted (31 days old, outside 30-day duration)
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(file1, currentDate), "File from Jan 8th should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(file2, currentDate), "File from Jan 1st should be kept");
-            Assert.IsFalse(policy.ShouldKeepFile(file3, currentDate), "File from Dec 25th should be deleted");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithMultipleRules_KeepsFilesMatchingAnyRule()
-        {
-            // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("1.00:00:00", "7.00:00:00"),   // Keep every day for 7 days
-                new RetentionRule("7.00:00:00", "30.00:00:00")    // Keep every week for 30 days
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Files that should be kept by different rules
-            DateTime dailyFile = new DateTime(2024, 1, 14, 3, 0, 0);  // Yesterday - kept by daily rule
-            DateTime weeklyFile = new DateTime(2024, 1, 8, 15, 30, 0); // Last Monday - kept by weekly rule
-            DateTime oldFile = new DateTime(2024, 1, 1, 23, 0, 0);     // Jan 1st - kept by weekly rule
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(dailyFile, currentDate), "Daily file should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(weeklyFile, currentDate), "Weekly file should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(oldFile, currentDate), "Old file should be kept by weekly rule");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithNoDuration_KeepsFilesIndefinitely()
-        {
-            // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("7.00:00:00", null) // Keep every week indefinitely
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Files from different weeks
-            DateTime file1 = new DateTime(2024, 1, 8, 3, 0, 0);   // Jan 8th - should be kept
-            DateTime file2 = new DateTime(2024, 1, 1, 15, 30, 0);  // Jan 1st - should be kept
-            DateTime file3 = new DateTime(2023, 12, 25, 23, 0, 0); // Dec 25th - should be kept (no duration limit)
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(file1, currentDate), "Recent file should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(file2, currentDate), "Older file should be kept");
-            
-            Assert.IsTrue(policy.ShouldKeepFile(file3, currentDate), "Very old file should be kept (no duration)");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithShiftingTime_DoesNotShiftRetentionWindow()
-        {
-            // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("7.00:00:00", "30.00:00:00") // Keep every week for 30 days
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime fileDate = new DateTime(2024, 1, 8, 15, 30, 0); // Jan 8th (Monday)
-
-            // Test with different current dates to ensure retention doesn't shift
-            DateTime currentDate1 = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-            DateTime currentDate2 = new DateTime(2024, 1, 16, 12, 0, 0); // Jan 16th
-            DateTime currentDate3 = new DateTime(2024, 1, 17, 12, 0, 0); // Jan 17th
-
-            // Act & Assert
-            bool result1 = policy.ShouldKeepFile(fileDate, currentDate1);
-            bool result2 = policy.ShouldKeepFile(fileDate, currentDate2);
-            bool result3 = policy.ShouldKeepFile(fileDate, currentDate3);
-
-            // The file should be kept or deleted consistently regardless of current date
-            // (as long as it's within the duration limit)
-            Assert.AreEqual(result1, result2, "Retention decision should not change from day 1 to day 2");
-            Assert.AreEqual(result2, result3, "Retention decision should not change from day 2 to day 3");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithExactSectionBoundaries_HandlesCorrectly()
-        {
-            // Arrange
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("7.00:00:00", "7.00:00:00") // Keep every week for 7 days
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Files exactly on section boundaries
-            DateTime fileOnSectionStart = new DateTime(2024, 1, 9, 0, 0, 0);  // Jan 9th 00:00 - should be kept (6 days old)
-            DateTime fileOnSectionEnd = new DateTime(2024, 1, 14, 23, 59, 59); // Jan 14th 23:59 - should be kept (1 day old)
-            DateTime fileJustOutside = new DateTime(2024, 1, 7, 12, 0, 0);    // Jan 7th 12:00 - should be deleted (8 days old, outside duration)
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(fileOnSectionStart, currentDate), "File on section start should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(fileOnSectionEnd, currentDate), "File on section end should be kept");
-            Assert.IsFalse(policy.ShouldKeepFile(fileJustOutside, currentDate), "File just outside section should be deleted");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithComplexRetentionPolicy_WorksCorrectly()
-        {
-            // Arrange - Complex policy: daily for 7 days, weekly for 30 days, monthly for 1 year
-            List<RetentionRule> rules = new()
-            {
-                new RetentionRule("1.00:00:00", "7.00:00:00"),   // Daily for 7 days
-                new RetentionRule("7.00:00:00", "30.00:00:00"),   // Weekly for 30 days
-                new RetentionRule("30.00:00:00", "365.00:00:00")  // Monthly for 1 year
-            };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Test files at different retention levels
-            DateTime recentFile = new DateTime(2024, 1, 14, 15, 30, 0);  // Yesterday - kept by daily rule
-            DateTime weeklyFile = new DateTime(2024, 1, 8, 3, 0, 0);     // Last Monday - kept by weekly rule
-            DateTime monthlyFile = new DateTime(2023, 12, 18, 12, 0, 0); // Last month - kept by monthly rule
-            DateTime oldFile = new DateTime(2023, 1, 15, 9, 0, 0);       // Last year - should be deleted
-
-            // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(recentFile, currentDate), "Recent file should be kept by daily rule");
-            Assert.IsTrue(policy.ShouldKeepFile(weeklyFile, currentDate), "Weekly file should be kept by weekly rule");
-            Assert.IsTrue(policy.ShouldKeepFile(monthlyFile, currentDate), "Monthly file should be kept by monthly rule");
-            Assert.IsFalse(policy.ShouldKeepFile(oldFile, currentDate), "Old file should be deleted");
-        }
-
-        [TestMethod]
-        public void ShouldKeepFile_WithNoRules_DeletesAllFiles()
-        {
-            // Arrange
-            List<RetentionRule> rules = new();
-            RetentionPolicy policy = new(rules);
-
+            RetentionPolicy policy = CreateExampleRetentionPolicy();
             DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0);
-            DateTime fileDate = new DateTime(2024, 1, 14, 15, 30, 0);
 
             // Act & Assert
-            Assert.IsFalse(policy.ShouldKeepFile(fileDate, currentDate), "File should be deleted when no rules exist");
+            // Test dates within 14 days (should return first rule)
+            DateTime recentDate = currentDate.AddDays(-5);
+            RetentionRule? result = policy.GetRetentionRuleByDate(recentDate, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("1.00:00:00", result.KeepEvery);
+
+            // Test date 20 days ago (should return second rule)
+            DateTime twentyDaysAgo = currentDate.AddDays(-20);
+            result = policy.GetRetentionRuleByDate(twentyDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("2.00:00:00", result.KeepEvery);
+
+            // Test date 35 days ago (should return third rule)
+            DateTime thirtyFiveDaysAgo = currentDate.AddDays(-35);
+            result = policy.GetRetentionRuleByDate(thirtyFiveDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("4.00:00:00", result.KeepEvery);
+
+            // Test date 60 days ago (should return third rule)
+            DateTime sixtyDaysAgo = currentDate.AddDays(-60);
+            result = policy.GetRetentionRuleByDate(sixtyDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("4.00:00:00", result.KeepEvery);
+
+            // Test date 100 days ago (should return fourth rule)
+            DateTime hundredDaysAgo = currentDate.AddDays(-100);
+            result = policy.GetRetentionRuleByDate(hundredDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("8.00:00:00", result.KeepEvery);
+
+            // Test date 200 days ago (should return fifth rule)
+            DateTime twoHundredDaysAgo = currentDate.AddDays(-200);
+            result = policy.GetRetentionRuleByDate(twoHundredDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("16.00:00:00", result.KeepEvery);
+
+            // Test date 400 days ago (should return sixth rule - indefinite)
+            DateTime fourHundredDaysAgo = currentDate.AddDays(-400);
+            result = policy.GetRetentionRuleByDate(fourHundredDaysAgo, currentDate);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("32.00:00:00", result.KeepEvery);
         }
 
         [TestMethod]
-        public void ShouldKeepFile_WithEdgeCaseTimes_HandlesCorrectly()
+        public void RetentionPolicy_WithInvalidRuleSequence_ThrowsArgumentException()
         {
             // Arrange
-            List<RetentionRule> rules = new()
+            List<RetentionRule> invalidRules = new List<RetentionRule>
             {
-                new RetentionRule("1.00:00:00", "7.00:00:00") // Keep every day for 7 days
+                new RetentionRule("1.00:00:00", "14.00:00:00"),    // 1 day
+                new RetentionRule("2.00:00:00", "28.00:00:00"),    // 2 days (valid - multiple of 1)
+                new RetentionRule("4.00:00:00", "44.00:00:00"),    // 4 days (valid - multiple of 2)
+                new RetentionRule("9.00:00:00", "74.00:00:00"),    // 9 days (invalid - not multiple of 4)
             };
-            RetentionPolicy policy = new(rules);
-
-            DateTime currentDate = new DateTime(2024, 1, 15, 12, 0, 0); // Jan 15th
-
-            // Files with edge case times
-            DateTime fileEarlyMorning = new DateTime(2024, 1, 14, 0, 0, 1);   // 00:00:01
-            DateTime fileLateNight = new DateTime(2024, 1, 14, 23, 59, 59);   // 23:59:59
-            DateTime fileMidnight = new DateTime(2024, 1, 14, 0, 0, 0);       // 00:00:00
 
             // Act & Assert
-            Assert.IsTrue(policy.ShouldKeepFile(fileEarlyMorning, currentDate), "Early morning file should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(fileLateNight, currentDate), "Late night file should be kept");
-            Assert.IsTrue(policy.ShouldKeepFile(fileMidnight, currentDate), "Midnight file should be kept");
+            ArgumentException exception = Assert.ThrowsException<ArgumentException>(() => new RetentionPolicy(invalidRules));
+            Assert.IsTrue(exception.Message.Contains("Rule 4 has interval 9.00:00:00 which is not a multiple"));
         }
 
         [TestMethod]
-        public void SimulateRetentionOverTime_WithComplexPolicy_WorksCorrectly()
+        public void RetentionPolicy_WithValidRuleSequence_DoesNotThrow()
         {
-            // Arrange - Create the complex retention policy
-            List<RetentionRule> rules = new()
+            // Arrange
+            List<RetentionRule> validRules = new List<RetentionRule>
+            {
+                new RetentionRule("1.00:00:00", "14.00:00:00"),    // 1 day
+                new RetentionRule("2.00:00:00", "28.00:00:00"),    // 2 days (valid - multiple of 1)
+                new RetentionRule("4.00:00:00", "44.00:00:00"),    // 4 days (valid - multiple of 2)
+                new RetentionRule("8.00:00:00", "74.00:00:00"),    // 8 days (valid - multiple of 4)
+            };
+
+            // Act & Assert
+            RetentionPolicy policy = new RetentionPolicy(validRules);
+            Assert.IsNotNull(policy);
+            Assert.AreEqual(4, policy.Rules.Count);
+        }
+
+        [TestMethod]
+        [DataRow("2024-01-10", "2024-01-15", true)]   // 5 days ago, should be kept (daily rule)
+        [DataRow("2024-01-10", "2024-01-13", true)]   // 3 days ago, should be kept (daily rule)
+        [DataRow("2024-01-10", "2024-01-17", true)]   // 7 days ago, should be kept (daily rule)
+        [DataRow("2024-01-10", "2024-01-23", true)]   // 13 days ago, should be kept (daily rule)
+        [DataRow("2024-01-10", "2024-01-24", true)]   // 14 days ago, should be kept (daily rule)
+        [DataRow("2024-01-10", "2024-01-25", false)]  // 15 days ago, should be deleted (outside daily rule period)
+        [DataRow("2024-01-10", "2024-01-26", false)]  // 16 days ago, should also be deleted because the first date, 10th of january, is not on a day that's every second day to keep
+        [DataRow("2024-01-10", "2024-01-27", false)]  // 17 days ago, should also be deleted because the first date, 10th of january, is not on a day that's every second day to keep
+        [DataRow("2024-01-10", "2024-01-28", false)]  // 18 days ago, should also be deleted because the first date, 10th of january, is not on a day that's every second day to keep
+        [DataRow("2024-01-10", "2024-01-29", false)]  // 19 days ago, should also be deleted because the first date, 10th of january, is not on a day that's every second day to keep
+        [DataRow("2024-01-10", "2024-02-02", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2024-02-25", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2024-03-16", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2024-04-28", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2024-05-25", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2024-10-12", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-10", "2025-11-04", false)]  // should also be deleted, since no matter how far in time we move, the first date is still not a keep date
+        [DataRow("2024-01-11", "2024-01-12", true)]   // here we change the first date, it's now a keep day for every second day
+        [DataRow("2024-01-11", "2024-01-13", true)]   // should of course be keept the first days no matter what
+        [DataRow("2024-01-11", "2024-01-15", true)]   // should of course be keept the first days no matter what
+        [DataRow("2024-01-11", "2024-01-18", true)]   // should of course be keept the first days no matter what
+        [DataRow("2024-01-11", "2024-01-22", true)]   // should of course be keept the first days no matter what
+        [DataRow("2024-01-11", "2024-01-25", true)]   // 14 days after, still keep
+        [DataRow("2024-01-11", "2024-01-26", true)]   // 15 days after, should now, still be kept since it's on a every second keep date
+        [DataRow("2024-01-11", "2024-01-27", true)]   // 16 days after, should now, still be kept since it's on a every second keep date
+        [DataRow("2024-01-11", "2024-02-08", true)]   // 28 days - should still be kept since it's on a every second keep date
+        [DataRow("2024-01-11", "2024-02-09", false)]  // 29 days - should be deleted here since we move to the next section, which is every fourth date
+        [DataRow("2024-01-11", "2024-02-15", false)]  // still deleted
+        [DataRow("2024-01-11", "2026-07-24", false)]  // still deleted
+        [DataRow("2024-01-12", "2024-01-28", false)]  // 16 days - test next date, should be deleted since this is not a keep date in every second date
+        [DataRow("2024-01-13", "2024-01-28", true)]   // 15 days - test next date, should be keept since this is a keep date in every second date
+        [DataRow("2024-01-13", "2024-01-29", true)]   // 16 days, should be keept since this is a keep date in every second date
+        [DataRow("2024-01-14", "2024-01-29", false)]  // next date 15 days - delete on every second
+        [DataRow("2024-01-14", "2024-01-30", false)]  // 16 days - delete on every second
+        [DataRow("2024-01-14", "2024-01-27", true)]   // 14 days - keep since it's within 14 days of start
+        [DataRow("2024-01-14", "2024-01-18", true)]   // 4 days - keep since it's within 14 days of start
+        [DataRow("2024-01-14", "2024-02-23", false)]  // 40 days - delete since it's not every fourth date
+        [DataRow("2024-01-15", "2024-02-24", false)]  // 40 days - delete since it's not every fourth date
+        [DataRow("2024-01-15", "2024-02-27", false)]  // delete since it's not every fourth date
+        [DataRow("2024-01-16", "2024-02-25", false)]  // 40 days delete, since it's not every fourth date
+        [DataRow("2024-01-17", "2024-02-26", true)]   // 40 days keep, it's a fourth date
+        [DataRow("2024-01-17", "2024-01-25", true)]   // keep, it's a fourth date and this is even lower than fourth date section, just making sure
+        [DataRow("2024-01-17", "2024-03-15", true)]   // keep, it's a fourth date
+        [DataRow("2024-01-17", "2024-04-10", true)]   // moving to 8 day section, but still keep since it's 16 days from reference which is divisible by 8
+        [DataRow("2024-01-13", "2024-02-22", true)]   // 40 days with 12 days from reference, should be keept in every 4 section
+        [DataRow("2024-01-13", "2024-03-15", true)]   // again keep since it's a fourth date
+        [DataRow("2024-01-13", "2024-04-10", false)]  // now 8 day section, should not be kept
+        [DataRow("2024-01-13", "2026-04-10", false)]  // deleted in the future
+        [DataRow("2024-01-17", "2026-04-10", false)]  // 8 day compatible date also deleted in the future
+        [DataRow("2024-02-02", "2026-04-10", true)]  // 32 day compatible date kept forever
+        public void ShouldKeepFile_WithExamplePolicy_ReturnsExpectedResult(string evaluationDateString, string currentDateString, bool expectedResult)
+        {
+            // Arrange
+            RetentionPolicy policy = CreateExampleRetentionPolicy();
+            DateTime evaluationDate = DateTime.Parse(evaluationDateString);
+            DateTime currentDate = DateTime.Parse(currentDateString);
+
+            // Act
+            bool actualResult = policy.ShouldKeepFile(evaluationDate, currentDate);
+
+            // Assert
+            Assert.AreEqual(expectedResult, actualResult);
+        }
+
+        [TestMethod]
+        [DataRow("2025-01-31", "2025-01-21", "2025-01-31", 20)]   // Simulate to last of january, check previous 10 days, expect 20 files (10 days * 2 files per day)
+        [DataRow("2025-02-15", "2025-01-21", "2025-01-31", 10)]   // Simulate to Feb 15, check last 10 days of january, should have only 10 files since half of the days should have been deleted
+        [DataRow("2025-11-01", "2025-01-01", "2025-01-31", 4)]    // Simulate almost to the end of the year, check first month, should have two dates with file left since that's every 16th (but 2 files in a day)
+        [DataRow("2028-08-12", "2025-01-01", "2025-01-31", 2)]    // Simulate a looong time forward, should still be two files left in january
+        [DataRow("2030-02-14", "2025-01-01", "2025-12-31", 22)]   // Simulate a loooooooong time forward, the year of 2025 should still have around a day of files per month left (every 32 days is kept)
+        public void SimulateRetentionPolicy_WithExamplePolicy_ReturnsExpectedFileCounts(string simulationEndDateString, string checkStartDateString, string checkEndDateString, int expectedFileCount)
+        {
+            // Arrange
+            RetentionPolicy policy = CreateExampleRetentionPolicy();
+            DateTime simulationStartDate = new DateTime(2025, 1, 1);
+            DateTime simulationEndDate = DateTime.Parse(simulationEndDateString);
+            DateTime checkStartDate = DateTime.Parse(checkStartDateString);
+            DateTime checkEndDate = DateTime.Parse(checkEndDateString);
+
+            RetentionPolicyTimeSimulator simulator = new RetentionPolicyTimeSimulator(policy, simulationStartDate);
+
+            // Act
+            int daysToSimulate = (int)(simulationEndDate - simulationStartDate).TotalDays;
+            simulator.SimulateForward(daysToSimulate);
+
+            int actualFileCount = simulator.GetFileCountBetweenDates(checkStartDate, checkEndDate);
+
+            // Assert
+            Assert.AreEqual(expectedFileCount, actualFileCount);
+        }
+
+        /// <summary>
+        /// Creates an example retention policy with 6 rules covering different time periods.
+        /// </summary>
+        /// <returns>A retention policy with example rules.</returns>
+        private static RetentionPolicy CreateExampleRetentionPolicy()
+        {
+            List<RetentionRule> rules = new List<RetentionRule>
             {
                 new RetentionRule("1.00:00:00", "14.00:00:00"),    // Daily for 14 days
                 new RetentionRule("2.00:00:00", "28.00:00:00"),    // Every 2 days for 15–28 days ago
-                new RetentionRule("4.00:00:00", "44.00:00:00"),    // Every 4 days for 29–44 days ago
-                new RetentionRule("5.00:00:00", "74.00:00:00"),    // Every 5 days for 45–74 days ago
-                new RetentionRule("7.00:00:00", "194.00:00:00"),   // Weekly for 75–194 days ago
-                new RetentionRule("14.00:00:00", "374.00:00:00"),  // Biweekly for 195–374 days ago
-                new RetentionRule("30.00:00:00", null)             // Monthly beyond 1 year
+                new RetentionRule("4.00:00:00", "74.00:00:00"),    // Every 4 days for 29–74 days ago
+                new RetentionRule("8.00:00:00", "194.00:00:00"),   // Every 8 days for 75–194 days ago
+                new RetentionRule("16.00:00:00", "374.00:00:00"),  // Every 16 days for 195–374 days ago
+                new RetentionRule("32.00:00:00", null)             // Every 32 days beyond 1 year
             };
-            RetentionPolicy policy = new(rules);
 
-            // Create simulated files for September 2024 (2 files per day at random times)
-            List<DateTime> simulatedFiles = CreateSimulatedFilesForSeptember2024();
-
-            // Test different simulation periods to verify all retention sections
-            DateTime simulationStart = new DateTime(2024, 10, 1, 12, 0, 0);  // October 1st
-            DateTime simulationEnd = new DateTime(2024, 12, 31, 12, 0, 0);   // December 31st
-
-            // Act - Simulate retention over time
-            List<DateTime> remainingFiles = SimulateRetentionOverTime(policy, simulationStart, simulationEnd, simulatedFiles);
-
-            // Assert - Verify that files are retained according to the policy
-            // After 3 months of simulation, we should have files from different retention periods
-            Assert.IsTrue(remainingFiles.Count > 0, "Some files should remain after retention simulation");
-
-            // Verify that no files older than the retention policy remain
-            foreach (DateTime fileDate in remainingFiles)
-            {
-                TimeSpan age = simulationEnd - fileDate;
-                bool shouldBeKept = policy.ShouldKeepFile(fileDate, simulationEnd);
-                Assert.IsTrue(shouldBeKept, $"File from {fileDate:yyyy-MM-dd} should be kept according to policy");
-            }
-
-            // Additional verification: Check that we have files from different retention periods
-            // After 3 months, September files would be ~90-120 days old, so they should be in weekly retention
-            List<DateTime> weeklyFiles = remainingFiles.Where(f => 
-            {
-                TimeSpan age = simulationEnd - f;
-                return age.TotalDays > 74 && age.TotalDays <= 194;
-            }).ToList();
-
-            Assert.IsTrue(weeklyFiles.Count > 0, "Should have files from weekly retention period");
-
-            // Test biweekly retention with a longer simulation period
-            DateTime biweeklySimulationStart = new DateTime(2024, 10, 1, 12, 0, 0);
-            DateTime biweeklySimulationEnd = new DateTime(2025, 3, 31, 12, 0, 0); // 6 months later
-
-            List<DateTime> biweeklyRemainingFiles = SimulateRetentionOverTime(policy, biweeklySimulationStart, biweeklySimulationEnd, simulatedFiles);
-
-            // After 6 months, September files would be ~180-210 days old, so they should be in biweekly retention
-            List<DateTime> biweeklyFiles = biweeklyRemainingFiles.Where(f => 
-            {
-                TimeSpan age = biweeklySimulationEnd - f;
-                return age.TotalDays > 194 && age.TotalDays <= 374;
-            }).ToList();
-
-            Assert.IsTrue(biweeklyFiles.Count > 0, "Should have files from biweekly retention period after 6 months");
-
-            // Test daily retention with a shorter simulation period
-            DateTime dailySimulationStart = new DateTime(2024, 10, 1, 12, 0, 0);
-            DateTime dailySimulationEnd = new DateTime(2024, 10, 10, 12, 0, 0); // Only 9 days later
-
-            List<DateTime> dailyRemainingFiles = SimulateRetentionOverTime(policy, dailySimulationStart, dailySimulationEnd, simulatedFiles);
-
-            // After 9 days, some September files should still be in daily retention (≤ 14 days old)
-            List<DateTime> dailyFiles = dailyRemainingFiles.Where(f => (dailySimulationEnd - f).TotalDays <= 14).ToList();
-            Assert.IsTrue(dailyFiles.Count > 0, "Should have files from daily retention period after 9 days");
-        }
-
-        private static List<DateTime> CreateSimulatedFilesForSeptember2024()
-        {
-            List<DateTime> files = new();
-            Random random = new Random(42); // Fixed seed for reproducible tests
-
-            DateTime startDate = new DateTime(2024, 9, 1, 0, 0, 0);
-            DateTime endDate = new DateTime(2024, 9, 30, 23, 59, 59);
-
-            for (DateTime date = startDate; date <= endDate; date = date.AddDays(1))
-            {
-                // Create 2 files per day at random times
-                for (int i = 0; i < 2; i++)
-                {
-                    int randomHour = random.Next(0, 24);
-                    int randomMinute = random.Next(0, 60);
-                    int randomSecond = random.Next(0, 60);
-
-                    DateTime fileTime = new DateTime(date.Year, date.Month, date.Day, randomHour, randomMinute, randomSecond);
-                    files.Add(fileTime);
-                }
-            }
-
-            return files;
-        }
-
-        private static List<DateTime> SimulateRetentionOverTime(RetentionPolicy policy, DateTime startDate, DateTime endDate, List<DateTime> files)
-        {
-            List<DateTime> currentFiles = new(files);
-
-            // Simulate daily retention checks
-            for (DateTime currentDate = startDate; currentDate <= endDate; currentDate = currentDate.AddDays(1))
-            {
-                currentFiles = ApplyRetentionPolicy(policy, currentDate, currentFiles);
-            }
-
-            return currentFiles;
-        }
-
-        private static List<DateTime> ApplyRetentionPolicy(RetentionPolicy policy, DateTime currentDate, List<DateTime> files)
-        {
-            List<DateTime> keptFiles = new();
-
-            foreach (DateTime fileDate in files)
-            {
-                if (policy.ShouldKeepFile(fileDate, currentDate))
-                {
-                    keptFiles.Add(fileDate);
-                }
-            }
-
-            return keptFiles;
+            return new RetentionPolicy(rules);
         }
     }
-} 
+}
