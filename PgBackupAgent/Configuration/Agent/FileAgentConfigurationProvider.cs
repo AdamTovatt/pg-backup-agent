@@ -1,6 +1,7 @@
 using System.Text.Json;
+using PgBackupAgent.Configuration.Agent;
 
-namespace PgBackupAgent.Configuration.Agent
+namespace PgBackupAgent.Configuration
 {
     /// <summary>
     /// File-based configuration provider that reads from a JSON configuration file.
@@ -33,10 +34,7 @@ namespace PgBackupAgent.Configuration.Agent
             try
             {
                 string jsonContent = File.ReadAllText(_configFilePath);
-                AgentConfiguration? configuration = JsonSerializer.Deserialize<AgentConfiguration>(jsonContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                AgentConfiguration? configuration = JsonSerializer.Deserialize<AgentConfiguration>(jsonContent, JsonOptions.DefaultSerializerOptions);
 
                 if (configuration == null)
                 {

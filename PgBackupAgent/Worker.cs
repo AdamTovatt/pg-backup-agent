@@ -8,12 +8,14 @@ namespace PgBackupAgent
         private readonly ILogger<Worker> _logger;
         private readonly AgentConfiguration _configuration;
         private readonly IBackupOrchestrator _backupOrchestrator;
+        private readonly IHostApplicationLifetime _hostApplicationLifetime;
 
-        public Worker(ILogger<Worker> logger, AgentConfiguration configuration, IBackupOrchestrator backupOrchestrator)
+        public Worker(ILogger<Worker> logger, AgentConfiguration configuration, IBackupOrchestrator backupOrchestrator, IHostApplicationLifetime hostApplicationLifetime)
         {
             _logger = logger;
             _configuration = configuration;
             _backupOrchestrator = backupOrchestrator;
+            _hostApplicationLifetime = hostApplicationLifetime;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,6 +32,8 @@ namespace PgBackupAgent
                 _logger.LogInformation("Starting backup operation at: {time}", DateTimeOffset.Now);
                 await _backupOrchestrator.PerformBackupAsync(stoppingToken);
                 _logger.LogInformation("Completed backup operation at: {time}", DateTimeOffset.Now);
+
+                _hostApplicationLifetime.StopApplication();
             }
             catch (Exception ex)
             {

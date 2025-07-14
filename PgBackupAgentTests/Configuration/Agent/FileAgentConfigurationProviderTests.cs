@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PgBackupAgent.Configuration;
 using PgBackupAgent.Configuration.Agent;
 
 namespace PgBackupAgentTests.Configuration.Agent

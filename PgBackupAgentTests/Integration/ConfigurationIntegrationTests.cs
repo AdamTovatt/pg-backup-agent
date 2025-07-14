@@ -1,3 +1,4 @@
+using PgBackupAgent.Configuration;
 using PgBackupAgent.Configuration.Agent;
 using PgBackupAgent.Configuration.FileRetention;
 

@@ -8,9 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ByteShelfClient" Version="1.1.1" />
-    <PackageReference Include="ByteShelfCommon" Version="1.1.1" />
+    <PackageReference Include="ByteShelfClient" Version="1.2.2" />
+    <PackageReference Include="ByteShelfCommon" Version="1.2.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-    <PackageReference Include="PgDump" Version="1.0.2" />
+    <PackageReference Include="PgDump" Version="1.0.3" />
   </ItemGroup>
 </Project>

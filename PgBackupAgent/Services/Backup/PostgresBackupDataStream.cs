@@ -39,8 +39,7 @@ namespace PgBackupAgent.Services.Backup
         /// <param name="createdAt">The creation timestamp of the backup.</param>
         public PostgresBackupDataStream(PgClient pgClient, string databaseName, DateTime createdAt)
         {
-            if (pgClient is null)
-                throw new ArgumentNullException(nameof(pgClient));
+            ArgumentNullException.ThrowIfNull(pgClient);
 
             if (string.IsNullOrEmpty(databaseName))
                 throw new ArgumentException("Database name cannot be null or empty.", nameof(databaseName));

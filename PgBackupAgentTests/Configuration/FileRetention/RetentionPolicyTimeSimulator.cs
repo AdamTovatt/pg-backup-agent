@@ -19,8 +19,7 @@ namespace PgBackupAgentTests.Configuration.FileRetention
         /// <param name="currentDate">The current date for the simulation.</param>
         public RetentionPolicyTimeSimulator(RetentionPolicy retentionPolicy, DateTime currentDate)
         {
-            if (retentionPolicy is null)
-                throw new ArgumentNullException(nameof(retentionPolicy));
+            ArgumentNullException.ThrowIfNull(retentionPolicy);
 
             _retentionPolicy = retentionPolicy;
             _currentDate = currentDate;
@@ -111,7 +110,7 @@ namespace PgBackupAgentTests.Configuration.FileRetention
         /// <summary>
         /// Represents a simulated file with a specific date.
         /// </summary>
-        public struct SimulatedFile
+        public readonly struct SimulatedFile
         {
             /// <summary>
             /// Gets the date of the simulated file.

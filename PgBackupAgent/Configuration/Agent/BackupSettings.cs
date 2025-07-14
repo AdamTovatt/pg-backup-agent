@@ -22,15 +22,14 @@ namespace PgBackupAgent.Configuration.Agent
         /// <param name="timeoutMinutes">Backup timeout in minutes.</param>
         public BackupSettings(string retentionPolicyPath, int timeoutMinutes)
         {
-            if (retentionPolicyPath is null)
-                throw new ArgumentNullException(nameof(retentionPolicyPath));
+            ArgumentNullException.ThrowIfNull(retentionPolicyPath);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutMinutes);
+
             if (string.IsNullOrEmpty(retentionPolicyPath))
                 throw new ArgumentException(nameof(retentionPolicyPath));
-            if (timeoutMinutes <= 0)
-                throw new ArgumentOutOfRangeException(nameof(timeoutMinutes));
 
             RetentionPolicyPath = retentionPolicyPath;
             TimeoutMinutes = timeoutMinutes;
         }
     }
-} 
+}

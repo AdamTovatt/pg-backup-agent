@@ -40,14 +40,14 @@ namespace PgBackupAgent
             builder.Services.AddSingleton(configuration.Backup);
 
             // Register ByteShelf HTTP client
-            HttpClient httpClient = new HttpClient();
-            httpClient.BaseAddress = new Uri(configuration.ByteShelf.BaseUrl);
+            HttpClient httpClient = HttpShelfFileProvider.CreateHttpClient(configuration.ByteShelf.BaseUrl);
 
             IShelfFileProvider shelfFileProvider = new HttpShelfFileProvider(httpClient, configuration.ByteShelf.ApiKey);
             builder.Services.AddSingleton(shelfFileProvider);
 
             // Register backup services
             builder.Services.AddSingleton<IDatabaseBackupService, PostgresDatabaseBackupService>();
+            builder.Services.AddSingleton<ISubtenantStructureService, SubtenantStructureService>();
             builder.Services.AddSingleton<IBackupOrchestrator, BackupOrchestrator>();
 
             // Register worker service

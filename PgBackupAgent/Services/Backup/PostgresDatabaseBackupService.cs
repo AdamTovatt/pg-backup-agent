@@ -16,8 +16,7 @@ namespace PgBackupAgent.Services.Backup
         /// <param name="postgresSettings">The PostgreSQL connection settings.</param>
         public PostgresDatabaseBackupService(PostgresSettings postgresSettings)
         {
-            if (postgresSettings is null)
-                throw new ArgumentNullException(nameof(postgresSettings));
+            ArgumentNullException.ThrowIfNull(postgresSettings);
 
             _postgresSettings = postgresSettings;
         }
@@ -44,7 +43,7 @@ namespace PgBackupAgent.Services.Backup
             PgClient pgClient = new PgClient(connectionOptions);
 
             // List all databases
-            List<string> databases = await pgClient.ListDatabasesAsync(TimeSpan.FromSeconds(30));
+            List<string> databases = await pgClient.ListDatabasesAsync(TimeSpan.FromSeconds(30), cancellationToken);
 
             // Create backup for each database
             foreach (string databaseName in databases)

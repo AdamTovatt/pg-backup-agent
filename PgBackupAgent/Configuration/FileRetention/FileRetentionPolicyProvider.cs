@@ -37,10 +37,7 @@ namespace PgBackupAgent.Configuration.FileRetention
             try
             {
                 string jsonContent = File.ReadAllText(filePath);
-                RetentionPolicy? policy = JsonSerializer.Deserialize<RetentionPolicy>(jsonContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                RetentionPolicy? policy = JsonSerializer.Deserialize<RetentionPolicy>(jsonContent, JsonOptions.DefaultSerializerOptions);
 
                 if (policy == null)
                 {
