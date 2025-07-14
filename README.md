@@ -67,4 +67,55 @@ Referenced by the `retentionPolicyPath` in the main configuration, this JSON fil
 
 ## Environment Variables
 
-- `BACKUP_CONFIG_PATH` - Path to the main configuration file (required) 
+- `BACKUP_CONFIG_PATH` - Path to the main configuration file (required)
+
+## Systemd Service Setup
+
+To run the agent as a scheduled service using systemd, create the following files:
+
+### Timer Configuration
+
+Create `/etc/systemd/system/pg-backup-agent.timer`:
+
+```ini
+[Unit]
+Description=Run Pg-Backup-Agent daily at 01:00
+
+[Timer]
+OnCalendar=*-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+### Service Configuration
+
+Create `/etc/systemd/system/pg-backup-agent.service`:
+
+```ini
+[Unit]
+Description=Pg-Backup-Agent Service
+After=nginx.service
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/opt/pg-backup-agent
+ExecStart=/opt/pg-backup-agent/PgBackupAgent
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=BACKUP_CONFIG_PATH=/etc/pg-backup-agent/config.json
+
+[Install]
+WantedBy=multi-user.target
+```
+
+After creating these files, enable and start the timer:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable pg-backup-agent.timer
+sudo systemctl start pg-backup-agent.timer
+``` 
+
+Run `sudo systemctl list-timers --all` to verify that it was registered.
