@@ -60,17 +60,28 @@ namespace PgBackupAgent.Services.Backup
             DateTime currentDate = DateTime.UtcNow;
             _logger.LogInformation("Starting backup operation at {CurrentDate}", currentDate);
 
-            // Create backups for all databases
-            IEnumerable<BackupFile> backupFiles = await _databaseBackupService.CreateBackupsAsync(cancellationToken);
-            _logger.LogInformation("Created {BackupCount} database backups", backupFiles.Count());
-
             // Get target subtenant ID for the current date
             string targetSubtenantId = await _subtenantStructureService.GetOrCreateDateBasedSubtenantAsync(currentDate, cancellationToken);
 
-            // Upload each backup to ByteShelf
-            foreach (BackupFile backupFile in backupFiles)
+            // Get list of databases to backup
+            List<string> databases = await _databaseBackupService.GetDatabasesToBackupAsync(cancellationToken);
+            _logger.LogInformation("Found {DatabaseCount} databases to backup", databases.Count);
+
+            // Process each database individually to minimize memory usage
+            foreach (string databaseName in databases)
             {
-                await UploadBackupFileAsync(backupFile, targetSubtenantId, cancellationToken);
+                try
+                {
+                    // Create backup for this specific database
+                    BackupFile backupFile = _databaseBackupService.CreateBackup(databaseName, cancellationToken);
+
+                    await UploadBackupFileAsync(backupFile, targetSubtenantId, cancellationToken);
+                    _logger.LogInformation("Successfully backed up database: {DatabaseName}", databaseName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to backup database: {DatabaseName}", databaseName);
+                }
             }
 
             // Apply retention policy to clean up old backups

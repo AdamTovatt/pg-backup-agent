@@ -56,13 +56,23 @@ namespace PgBackupAgent.Services.Backup
         /// <returns>A stream containing the backup data.</returns>
         public async Task<Stream> CreateStreamAsync(CancellationToken cancellationToken = default)
         {
+            // Use MemoryStream but ensure it's properly disposed
             MemoryStream memoryStream = new MemoryStream();
-            StreamOutputProvider outputProvider = new StreamOutputProvider(memoryStream);
-
-            await _pgClient.DumpAsync(outputProvider, TimeSpan.FromMinutes(5), DumpFormat.Tar, cancellationToken);
-
-            memoryStream.Position = 0; // Reset position for reading
-            return memoryStream;
+            
+            try
+            {
+                StreamOutputProvider outputProvider = new StreamOutputProvider(memoryStream);
+                await _pgClient.DumpAsync(outputProvider, TimeSpan.FromMinutes(5), DumpFormat.Tar, cancellationToken);
+                
+                memoryStream.Position = 0; // Reset position for reading
+                return memoryStream;
+            }
+            catch
+            {
+                // If anything goes wrong, make sure we clean up the memory stream
+                memoryStream.Dispose();
+                throw;
+            }
         }
     }
 }
