@@ -79,11 +79,12 @@ Create `/etc/systemd/system/pg-backup-agent.timer`:
 
 ```ini
 [Unit]
-Description=Run Pg-Backup-Agent daily at 01:00
+Description=Run Pg-Backup-Agent daily at 01:00 UTC
 
 [Timer]
 OnCalendar=*-*-* 01:00:00
-Persistent=true
+Persistent=false
+Timezone=UTC
 
 [Install]
 WantedBy=timers.target
