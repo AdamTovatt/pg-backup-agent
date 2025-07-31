@@ -99,7 +99,7 @@ namespace PgBackupAgent.Services.Backup
                 await ApplyRetentionPolicyAsync(currentDate, cancellationToken);
             }
 
-            _logger.LogInformation($"Completed backup operation {(hasFailedUpload ? "without problems" : "with problems indicating an error somewhere")}");
+            _logger.LogInformation($"Completed backup operation {(hasFailedUpload ? "with problems indicating an error somewhere" : "without problems")}");
         }
 
         /// <summary>
