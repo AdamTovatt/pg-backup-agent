@@ -20,4 +20,4 @@ namespace PgBackupAgent.Attributes
             MinLength = minLength;
         }
     }
-} 
+}

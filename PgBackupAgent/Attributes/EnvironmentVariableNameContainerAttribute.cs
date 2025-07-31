@@ -8,4 +8,4 @@ namespace PgBackupAgent.Attributes
     public class EnvironmentVariableNameContainerAttribute : Attribute
     {
     }
-} 
+}

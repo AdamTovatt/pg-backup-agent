@@ -1,6 +1,4 @@
-using ByteShelfClient;
 using ByteShelfCommon;
-using Microsoft.Extensions.Logging;
 using PgBackupAgent.Configuration.Agent;
 using PgBackupAgent.Configuration.FileRetention;
 
@@ -67,6 +65,8 @@ namespace PgBackupAgent.Services.Backup
             List<string> databases = await _databaseBackupService.GetDatabasesToBackupAsync(cancellationToken);
             _logger.LogInformation("Found {DatabaseCount} databases to backup", databases.Count);
 
+            bool hasFailedUpload = false;
+
             // Process each database individually to minimize memory usage
             foreach (string databaseName in databases)
             {
@@ -75,8 +75,17 @@ namespace PgBackupAgent.Services.Backup
                     // Create backup for this specific database
                     BackupFile backupFile = _databaseBackupService.CreateBackup(databaseName, cancellationToken);
 
-                    await UploadBackupFileAsync(backupFile, targetSubtenantId, cancellationToken);
-                    _logger.LogInformation("Successfully backed up database: {DatabaseName}", databaseName);
+                    bool uploadResult = await UploadBackupFileAsync(backupFile, targetSubtenantId, cancellationToken);
+
+                    if (uploadResult)
+                    {
+                        _logger.LogInformation("Successfully backed up database: {DatabaseName}", databaseName);
+                    }
+                    else
+                    {
+                        hasFailedUpload = true;
+                        throw new Exception($"Backup file upload result indicated upload failure");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -84,10 +93,13 @@ namespace PgBackupAgent.Services.Backup
                 }
             }
 
-            // Apply retention policy to clean up old backups
-            await ApplyRetentionPolicyAsync(currentDate, cancellationToken);
+            if (!hasFailedUpload) // Only apply retention policy if no upload has failed
+            {
+                // Apply retention policy to clean up old backups
+                await ApplyRetentionPolicyAsync(currentDate, cancellationToken);
+            }
 
-            _logger.LogInformation("Completed backup operation");
+            _logger.LogInformation($"Completed backup operation {(hasFailedUpload ? "without problems" : "with problems indicating an error somewhere")}");
         }
 
         /// <summary>
@@ -97,7 +109,7 @@ namespace PgBackupAgent.Services.Backup
         /// <param name="cancellationToken">Cancellation token for the operation.</param>
         /// <param name="targetTenantId">The tenant to upload the backup file to.</param>
         /// <returns>A task representing the upload operation.</returns>
-        private async Task UploadBackupFileAsync(BackupFile backupFile, string targetTenantId, CancellationToken cancellationToken)
+        private async Task<bool> UploadBackupFileAsync(BackupFile backupFile, string targetTenantId, CancellationToken cancellationToken)
         {
             using Stream backupStream = await backupFile.BackupData.CreateStreamAsync(cancellationToken);
 
@@ -112,10 +124,14 @@ namespace PgBackupAgent.Services.Backup
                     cancellationToken: cancellationToken);
 
                 _logger.LogInformation("Uploaded backup {Filename} with ID: {FileId}", backupFile.Filename, fileId);
+
+                return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error when uploading backup {backupFile.Filename} with {_shelfFileProvider.GetType().Name}");
+
+                return false;
             }
         }
 

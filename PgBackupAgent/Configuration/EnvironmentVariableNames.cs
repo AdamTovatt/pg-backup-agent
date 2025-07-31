@@ -15,4 +15,4 @@ namespace PgBackupAgent.Configuration
         [EnvironmentVariableName]
         public const string BackupConfigPath = "BACKUP_CONFIG_PATH";
     }
-} 
+}
