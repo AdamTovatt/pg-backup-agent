@@ -1,0 +1,10 @@
+{
+  "executable": "PgBackupAgent",
+  "command": "pg-backup-agent",
+  "settings": {
+    "BACKUP_CONFIG_PATH": {
+      "description": "Path to the agent's JSON configuration file (Postgres, ByteShelf and backup settings)",
+      "required": true
+    }
+  }
+}

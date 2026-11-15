@@ -170,8 +170,8 @@ namespace PgBackupAgentTests.Configuration.FileRetention
             public AgentConfiguration GetConfiguration()
             {
                 PostgresSettings postgres = new("localhost", 5432, "user", "pass", "db");
-                ByteShelfSettings byteShelf = new("https://example.com", "api-key-with-sufficient-length");
-                BackupSettings backup = new(_retentionPolicyPath, 60);
+                ByteShelfSettings byteShelf = new("https://example.com", "backups", "bsk_secret-for-tests");
+                BackupSettings backup = new("primary", _retentionPolicyPath, 60);
                 return new AgentConfiguration(postgres, byteShelf, backup);
             }
         }

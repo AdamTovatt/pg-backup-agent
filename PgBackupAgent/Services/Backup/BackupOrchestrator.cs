@@ -1,3 +1,4 @@
+using ByteShelfClient;
 using ByteShelfCommon;
 using PgBackupAgent.Configuration.Agent;
 using PgBackupAgent.Configuration.FileRetention;
@@ -5,230 +6,201 @@ using PgBackupAgent.Configuration.FileRetention;
 namespace PgBackupAgent.Services.Backup
 {
     /// <summary>
-    /// Implementation of IBackupOrchestrator that coordinates database backups and ByteShelf storage.
+    /// Dumps every database to the source's folder on the shelf, <c>/&lt;source&gt;/YYYY/MM/DD/</c>, then
+    /// prunes that folder by the retention policy. Nothing outside the source's folder is touched, so
+    /// agents for different servers can share a shelf.
     /// </summary>
     public class BackupOrchestrator : IBackupOrchestrator
     {
         private readonly IDatabaseBackupService _databaseBackupService;
-        private readonly IShelfFileProvider _shelfFileProvider;
-        private readonly ISubtenantStructureService _subtenantStructureService;
+        private readonly IShelfClient _shelf;
         private readonly RetentionPolicy _retentionPolicy;
         private readonly BackupSettings _backupSettings;
+        private readonly TimeProvider _timeProvider;
         private readonly ILogger<BackupOrchestrator> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BackupOrchestrator"/> class.
         /// </summary>
         /// <param name="databaseBackupService">The database backup service.</param>
-        /// <param name="shelfFileProvider">The ByteShelf file provider.</param>
-        /// <param name="subtenantStructureService">The subtenant structure service.</param>
-        /// <param name="retentionPolicy">The retention policy for cleanup.</param>
-        /// <param name="backupSettings">The backup settings.</param>
+        /// <param name="shelf">The shelf the backups are stored on.</param>
+        /// <param name="retentionPolicy">The retention policy for pruning.</param>
+        /// <param name="backupSettings">The backup settings, naming the source.</param>
+        /// <param name="timeProvider">The clock pruning judges each file's age by.</param>
         /// <param name="logger">The logger instance.</param>
         public BackupOrchestrator(
             IDatabaseBackupService databaseBackupService,
-            IShelfFileProvider shelfFileProvider,
-            ISubtenantStructureService subtenantStructureService,
+            IShelfClient shelf,
             RetentionPolicy retentionPolicy,
             BackupSettings backupSettings,
+            TimeProvider timeProvider,
             ILogger<BackupOrchestrator> logger)
         {
             ArgumentNullException.ThrowIfNull(databaseBackupService);
-            ArgumentNullException.ThrowIfNull(shelfFileProvider);
-            ArgumentNullException.ThrowIfNull(subtenantStructureService);
+            ArgumentNullException.ThrowIfNull(shelf);
             ArgumentNullException.ThrowIfNull(retentionPolicy);
             ArgumentNullException.ThrowIfNull(backupSettings);
+            ArgumentNullException.ThrowIfNull(timeProvider);
             ArgumentNullException.ThrowIfNull(logger);
 
             _databaseBackupService = databaseBackupService;
-            _shelfFileProvider = shelfFileProvider;
-            _subtenantStructureService = subtenantStructureService;
+            _shelf = shelf;
             _retentionPolicy = retentionPolicy;
             _backupSettings = backupSettings;
+            _timeProvider = timeProvider;
             _logger = logger;
         }
 
         /// <summary>
-        /// Performs a complete backup operation including database backup and storage upload.
+        /// The source's folder on the shelf, <c>/&lt;source&gt;</c>.
+        /// </summary>
+        private string SourceFolder => ShelfPath.Combine(ShelfPath.Root, _backupSettings.Source);
+
+        /// <summary>
+        /// Backs up every database, then prunes the source's folder unless a database failed.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <returns>A task representing the backup operation.</returns>
-        public async Task PerformBackupAsync(CancellationToken cancellationToken = default)
+        /// <returns>What the run stored, what failed, and how pruning went.</returns>
+        public async Task<BackupReport> PerformBackupAsync(CancellationToken cancellationToken = default)
         {
-            DateTime currentDate = DateTime.UtcNow;
-            _logger.LogInformation("Starting backup operation at {CurrentDate}", currentDate);
-
-            // Get target subtenant ID for the current date
-            string targetSubtenantId = await _subtenantStructureService.GetOrCreateDateBasedSubtenantAsync(currentDate, cancellationToken);
-
-            // Get list of databases to backup
             List<string> databases = await _databaseBackupService.GetDatabasesToBackupAsync(cancellationToken);
-            _logger.LogInformation("Found {DatabaseCount} databases to backup", databases.Count);
+            _logger.LogInformation("Found {DatabaseCount} databases to back up to {SourceFolder} on shelf {Shelf}", databases.Count, SourceFolder, _shelf.Name);
 
-            bool hasFailedUpload = false;
+            List<string> storedPaths = new List<string>();
+            List<string> failedDatabases = new List<string>();
 
-            // Process each database individually to minimize memory usage
+            // One database at a time, so only one dump is held in memory.
             foreach (string databaseName in databases)
             {
                 try
                 {
-                    // Create backup for this specific database
                     BackupFile backupFile = _databaseBackupService.CreateBackup(databaseName, cancellationToken);
-
-                    bool uploadResult = await UploadBackupFileAsync(backupFile, targetSubtenantId, cancellationToken);
-
-                    if (uploadResult)
-                    {
-                        _logger.LogInformation("Successfully backed up database: {DatabaseName}", databaseName);
-                    }
-                    else
-                    {
-                        hasFailedUpload = true;
-                        throw new Exception($"Backup file upload result indicated upload failure");
-                    }
+                    ShelfFile stored = await StoreAsync(backupFile, cancellationToken);
+                    storedPaths.Add(stored.Path);
+                    _logger.LogInformation("Stored {DatabaseName} at {Path} ({SizeBytes} bytes)", databaseName, stored.Path, stored.SizeBytes);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogError(ex, "Failed to backup database: {DatabaseName}", databaseName);
+                    failedDatabases.Add(databaseName);
+                    _logger.LogError(ex, "Failed to back up database {DatabaseName}", databaseName);
                 }
             }
 
-            if (!hasFailedUpload) // Only apply retention policy if no upload has failed
+            PruningOutcome pruning;
+            if (failedDatabases.Count > 0)
             {
-                // Apply retention policy to clean up old backups
-                await ApplyRetentionPolicyAsync(currentDate, cancellationToken);
+                // A failing backup must not also thin out the backups that still work.
+                pruning = PruningOutcome.SkippedAfterFailedBackup;
+                _logger.LogWarning("Not pruning, since {FailedCount} of {DatabaseCount} databases failed: {FailedDatabases}",
+                    failedDatabases.Count, databases.Count, string.Join(", ", failedDatabases));
+            }
+            else
+            {
+                pruning = await PruneAsync(cancellationToken);
             }
 
-            _logger.LogInformation($"Completed backup operation {(hasFailedUpload ? "with problems indicating an error somewhere" : "without problems")}");
+            return new BackupReport(storedPaths, failedDatabases, pruning);
         }
 
         /// <summary>
-        /// Uploads a backup file to ByteShelf storage.
+        /// Dumps a database and stores the dump at its path under the source's folder, typed by its
+        /// <c>.tar</c> extension.
         /// </summary>
-        /// <param name="backupFile">The backup file to upload.</param>
-        /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <param name="targetTenantId">The tenant to upload the backup file to.</param>
-        /// <returns>A task representing the upload operation.</returns>
-        private async Task<bool> UploadBackupFileAsync(BackupFile backupFile, string targetTenantId, CancellationToken cancellationToken)
+        private async Task<ShelfFile> StoreAsync(BackupFile backupFile, CancellationToken cancellationToken)
         {
-            using Stream backupStream = await backupFile.BackupData.CreateStreamAsync(cancellationToken);
+            string path = backupFile.ShelfPathUnder(SourceFolder);
+            await using Stream content = await backupFile.BackupData.CreateStreamAsync(cancellationToken);
+            return await _shelf.UploadAsync(path, content, cancellationToken: cancellationToken);
+        }
 
+        /// <summary>
+        /// Deletes every file in the source's folder the retention policy does not keep, judged by when
+        /// the file was stored, then every directory left with no file under it.
+        /// </summary>
+        private async Task<PruningOutcome> PruneAsync(CancellationToken cancellationToken)
+        {
             try
             {
-                // Upload to ByteShelf with appropriate content type
-                Guid fileId = await _shelfFileProvider.WriteFileForTenantAsync(
-                    targetTenantId: targetTenantId,
-                    originalFilename: backupFile.Filename,
-                    contentType: "application/sql",
-                    content: backupStream,
-                    cancellationToken: cancellationToken);
+                DateTime now = _timeProvider.GetUtcNow().UtcDateTime;
+                (List<ShelfDirectory> directories, List<ShelfFile> files) = await ListSourceFolderAsync(cancellationToken);
 
-                _logger.LogInformation("Uploaded backup {Filename} with ID: {FileId}", backupFile.Filename, fileId);
+                List<ShelfFile> kept = new List<ShelfFile>();
+                int deletedFiles = 0;
+                foreach (ShelfFile file in files)
+                {
+                    if (_retentionPolicy.ShouldKeepFile(file.CreatedAt.UtcDateTime, now))
+                    {
+                        kept.Add(file);
+                        continue;
+                    }
 
-                return true;
+                    await _shelf.DeleteFileAsync(file.Id, cancellationToken);
+                    deletedFiles++;
+                    _logger.LogInformation("Pruned {Path}, stored {CreatedAt:u}", file.Path, file.CreatedAt);
+                }
+
+                int deletedDirectories = 0;
+                foreach (ShelfDirectory directory in TopmostEmptyDirectories(directories, kept))
+                {
+                    // Deleting the topmost empty directory takes the empty ones below it in the same deletion.
+                    await _shelf.DeleteDirectoryAsync(directory.Id, cancellationToken);
+                    deletedDirectories++;
+                    _logger.LogInformation("Removed empty directory {Path}", directory.Path);
+                }
+
+                _logger.LogInformation("Pruned {DeletedFiles} of {FileCount} files and {DeletedDirectories} empty directories in {SourceFolder}",
+                    deletedFiles, files.Count, deletedDirectories, SourceFolder);
+                return PruningOutcome.Pruned;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                _logger.LogError(ex, $"Error when uploading backup {backupFile.Filename} with {_shelfFileProvider.GetType().Name}");
-
-                return false;
+                _logger.LogError(ex, "Pruning {SourceFolder} failed", SourceFolder);
+                return PruningOutcome.Failed;
             }
         }
 
         /// <summary>
-        /// Applies the retention policy to clean up old backups.
+        /// Every live directory and file under the source's folder, at any depth, by path.
         /// </summary>
-        /// <param name="currentDate">The current date for retention calculations.</param>
-        /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <returns>A task representing the cleanup operation.</returns>
-        private async Task ApplyRetentionPolicyAsync(DateTime currentDate, CancellationToken cancellationToken)
+        private async Task<(List<ShelfDirectory> Directories, List<ShelfFile> Files)> ListSourceFolderAsync(CancellationToken cancellationToken)
         {
-            // Get all subtenants to traverse the hierarchical structure
-            Dictionary<string, TenantInfoResponse> allSubtenants = await _shelfFileProvider.GetSubTenantsAsync(cancellationToken);
+            List<ShelfDirectory> directories = new List<ShelfDirectory>();
+            List<ShelfFile> files = new List<ShelfFile>();
+            string? cursor = null;
 
-            // Process each year subtenant
-            foreach (KeyValuePair<string, TenantInfoResponse> yearSubtenant in allSubtenants)
+            do
             {
-                await ProcessSubtenantForRetentionAsync(yearSubtenant.Key, yearSubtenant.Value.DisplayName, currentDate, cancellationToken);
+                DirectoryTree page = await _shelf.ListTreeAsync(new TreeQuery { Under = SourceFolder, Limit = TreeQuery.MaxLimit, After = cursor }, cancellationToken);
+                directories.AddRange(page.Directories);
+                files.AddRange(page.Files);
+                cursor = page.NextCursor;
             }
+            while (cursor != null);
+
+            return (directories, files);
         }
 
         /// <summary>
-        /// Recursively processes subtenants for retention policy cleanup.
+        /// The directories with no kept file under them, leaving out those inside another such directory.
         /// </summary>
-        /// <param name="subtenantId">The subtenant ID to process.</param>
-        /// <param name="subtenantName">The display name of the subtenant.</param>
-        /// <param name="currentDate">The current date for retention calculations.</param>
-        /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <returns>A task representing the cleanup operation.</returns>
-        private async Task ProcessSubtenantForRetentionAsync(string subtenantId, string subtenantName, DateTime currentDate, CancellationToken cancellationToken)
+        private static List<ShelfDirectory> TopmostEmptyDirectories(List<ShelfDirectory> directories, List<ShelfFile> keptFiles)
         {
-            // Get files in this subtenant
-            IEnumerable<ShelfFileMetadata> files = await _shelfFileProvider.GetFilesForTenantAsync(subtenantId, cancellationToken);
-
-            int deletedFilesCount = 0;
-
-            // Check each file against retention policy
-            foreach (ShelfFileMetadata file in files)
+            HashSet<string> occupied = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ShelfFile file in keptFiles)
             {
-                bool shouldKeep = _retentionPolicy.ShouldKeepFile(file.CreatedAt.DateTime, currentDate);
-
-                if (!shouldKeep)
+                for (string parent = ShelfPath.GetParent(file.Path); parent != ShelfPath.Root; parent = ShelfPath.GetParent(parent))
                 {
-                    await _shelfFileProvider.DeleteFileForTenantAsync(subtenantId, file.Id, cancellationToken);
-                    _logger.LogInformation("Deleted old backup: {Filename} from subtenant {SubtenantName}", file.OriginalFilename, subtenantName);
-                    deletedFilesCount++;
+                    if (!occupied.Add(parent))
+                    {
+                        break;
+                    }
                 }
             }
 
-            // Get subtenants under this subtenant and process them recursively
-            Dictionary<string, TenantInfoResponse> childSubtenants = await _shelfFileProvider.GetSubTenantsUnderSubTenantAsync(subtenantId, cancellationToken);
-
-            foreach (KeyValuePair<string, TenantInfoResponse> childSubtenant in childSubtenants)
-            {
-                await ProcessSubtenantForRetentionAsync(childSubtenant.Key, childSubtenant.Value.DisplayName, currentDate, cancellationToken);
-            }
-
-            // After processing all child subtenants, check if this subtenant should be deleted
-            // Only check if we deleted files or if there were no files to begin with
-            if (deletedFilesCount > 0 || !files.Any())
-            {
-                await CheckAndDeleteEmptySubtenantAsync(subtenantId, subtenantName, cancellationToken);
-            }
-        }
-
-        /// <summary>
-        /// Checks if a subtenant is empty and deletes it if so.
-        /// </summary>
-        /// <param name="subtenantId">The subtenant ID to check.</param>
-        /// <param name="subtenantName">The display name of the subtenant.</param>
-        /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <returns>A task representing the cleanup operation.</returns>
-        private async Task CheckAndDeleteEmptySubtenantAsync(string subtenantId, string subtenantName, CancellationToken cancellationToken)
-        {
-            // Get remaining files in this subtenant
-            IEnumerable<ShelfFileMetadata> remainingFiles = await _shelfFileProvider.GetFilesForTenantAsync(subtenantId, cancellationToken);
-
-            // If there are files remaining, we can't delete the subtenant
-            if (remainingFiles.Any())
-                return;
-
-            // Get remaining child subtenants
-            Dictionary<string, TenantInfoResponse> remainingChildSubtenants = await _shelfFileProvider.GetSubTenantsUnderSubTenantAsync(subtenantId, cancellationToken);
-
-            // Delete subtenant if it has no child subtenants
-            if (!remainingChildSubtenants.Any())
-            {
-                try
-                {
-                    await _shelfFileProvider.DeleteSubTenantAsync(subtenantId, cancellationToken);
-                    _logger.LogInformation("Deleted empty subtenant: {SubtenantName} (ID: {SubtenantId})", subtenantName, subtenantId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Tried to delete empty subtenant {subtenantName} ({subtenantId}) but failed with exception: {ex.Message}");
-                }
-            }
+            HashSet<string> empty = directories.Where(directory => !occupied.Contains(directory.Path)).Select(directory => directory.Path).ToHashSet(StringComparer.Ordinal);
+            return directories
+                .Where(directory => empty.Contains(directory.Path) && !empty.Contains(ShelfPath.GetParent(directory.Path)))
+                .ToList();
         }
     }
 }

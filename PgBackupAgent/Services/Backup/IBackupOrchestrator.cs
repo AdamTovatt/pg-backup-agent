@@ -6,10 +6,10 @@ namespace PgBackupAgent.Services.Backup
     public interface IBackupOrchestrator
     {
         /// <summary>
-        /// Performs a complete backup operation including database backup and storage upload.
+        /// Backs up every database to the shelf, then prunes the source's backups unless a database failed.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for the operation.</param>
-        /// <returns>A task representing the backup operation.</returns>
-        Task PerformBackupAsync(CancellationToken cancellationToken = default);
+        /// <returns>What the run stored, what failed, and how pruning went.</returns>
+        Task<BackupReport> PerformBackupAsync(CancellationToken cancellationToken = default);
     }
 }

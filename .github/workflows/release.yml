@@ -1,0 +1,65 @@
+name: Release
+
+# A v<version> tag publishes a GitHub release that updaemon installs: one self-contained zip per
+# platform, named pg-backup-agent-<rid>.zip with updaemon.json at its root, and a SHA256SUMS that
+# updaemon checks each download against.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The csproj's <Version> is the version; the tag only says to release it, so the two must match.
+      - name: Verify tag version matches csproj
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          CSPROJ=PgBackupAgent/PgBackupAgent.csproj
+          CSPROJ_VERSION=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ" || true)
+          if [ -z "$CSPROJ_VERSION" ]; then
+            echo "::error::No <Version> found in ${CSPROJ}."
+            exit 1
+          fi
+          if [ "$VERSION" != "$CSPROJ_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match ${CSPROJ} <Version> ${CSPROJ_VERSION}. Bump the csproj or fix the tag."
+            exit 1
+          fi
+          echo "Version check OK: ${VERSION}"
+
+      - name: Test
+        run: dotnet test PgBackupAgent.sln -c Release
+
+      - name: Publish and zip
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for rid in linux-arm64 linux-x64; do
+            dotnet publish PgBackupAgent/PgBackupAgent.csproj -c Release -r "$rid" --self-contained true -o "publish/$rid"
+            (cd "publish/$rid" && zip -r "../../dist/pg-backup-agent-$rid.zip" .)
+          done
+
+      - name: Write SHA256SUMS
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

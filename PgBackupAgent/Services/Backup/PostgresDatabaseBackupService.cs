@@ -9,16 +9,24 @@ namespace PgBackupAgent.Services.Backup
     public class PostgresDatabaseBackupService : IDatabaseBackupService
     {
         private readonly PostgresSettings _postgresSettings;
+        private readonly BackupSettings _backupSettings;
+        private readonly TimeProvider _timeProvider;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PostgresDatabaseBackupService"/> class.
         /// </summary>
         /// <param name="postgresSettings">The PostgreSQL connection settings.</param>
-        public PostgresDatabaseBackupService(PostgresSettings postgresSettings)
+        /// <param name="backupSettings">The backup settings, for how long a dump may take.</param>
+        /// <param name="timeProvider">The clock each backup is dated by.</param>
+        public PostgresDatabaseBackupService(PostgresSettings postgresSettings, BackupSettings backupSettings, TimeProvider timeProvider)
         {
             ArgumentNullException.ThrowIfNull(postgresSettings);
+            ArgumentNullException.ThrowIfNull(backupSettings);
+            ArgumentNullException.ThrowIfNull(timeProvider);
 
             _postgresSettings = postgresSettings;
+            _backupSettings = backupSettings;
+            _timeProvider = timeProvider;
         }
 
         /// <summary>
@@ -54,7 +62,7 @@ namespace PgBackupAgent.Services.Backup
         /// <returns>A backup file for the specified database.</returns>
         public BackupFile CreateBackup(string databaseName, CancellationToken cancellationToken = default)
         {
-            DateTime createdAt = DateTime.UtcNow;
+            DateTime createdAt = _timeProvider.GetUtcNow().UtcDateTime;
 
             // Create connection options for the specific database
             ConnectionOptions databaseConnectionOptions = new ConnectionOptions(
@@ -66,12 +74,11 @@ namespace PgBackupAgent.Services.Backup
             );
 
             PgClient databasePgClient = new PgClient(databaseConnectionOptions);
-            PostgresBackupDataStream backupDataStream = new PostgresBackupDataStream(databasePgClient, databaseName, createdAt);
+            PostgresBackupDataStream backupDataStream = new PostgresBackupDataStream(databasePgClient, databaseName, createdAt, TimeSpan.FromMinutes(_backupSettings.TimeoutMinutes));
 
             return new BackupFile(
                 databaseName,
                 backupDataStream,
-                backupDataStream.Filename,
                 createdAt,
                 backupDataStream.EstimatedSizeBytes
             );
@@ -85,7 +92,6 @@ namespace PgBackupAgent.Services.Backup
         public async Task<IEnumerable<BackupFile>> CreateBackupsAsync(CancellationToken cancellationToken = default)
         {
             List<BackupFile> backupFiles = new List<BackupFile>();
-            DateTime createdAt = DateTime.UtcNow;
 
             // Get list of databases to backup
             List<string> databases = await GetDatabasesToBackupAsync(cancellationToken);
