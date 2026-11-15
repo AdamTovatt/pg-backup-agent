@@ -1,5 +1,5 @@
 using ByteShelfClient;
-using ByteShelfCommon;
+using ByteShelfClient.Http;
 using PgBackupAgent.Configuration;
 using PgBackupAgent.Configuration.Agent;
 using PgBackupAgent.Configuration.FileRetention;
@@ -8,53 +8,90 @@ using PgBackupAgent.Services.Backup;
 
 namespace PgBackupAgent
 {
+    /// <summary>
+    /// Runs one backup and exits: 0 when every database was stored and pruning went through, 1 otherwise,
+    /// so a systemd oneshot run by a timer shows the failure.
+    /// </summary>
     public class Program
     {
-        public static void Main(string[] args)
+        private const int Success = 0;
+        private const int Failure = 1;
+
+        public static async Task<int> Main(string[] args)
         {
-            // Validate all required environment variables
-            EnvironmentHelper.ValidateEnvironmentVariableNames(typeof(EnvironmentVariableNames));
+            AgentConfiguration configuration;
+            RetentionPolicy retentionPolicy;
+            try
+            {
+                EnvironmentHelper.ValidateEnvironmentVariableNames(typeof(EnvironmentVariableNames));
+                string configFilePath = EnvironmentHelper.GetEnvironmentVariable(EnvironmentVariableNames.BackupConfigPath);
 
-            // Get configuration file path from environment variable
-            string configFilePath = EnvironmentHelper.GetEnvironmentVariable(EnvironmentVariableNames.BackupConfigPath);
+                IAgentConfigurationProvider configProvider = new FileAgentConfigurationProvider(configFilePath);
+                configuration = configProvider.GetConfiguration();
+                retentionPolicy = new FileRetentionPolicyProvider(configProvider).GetRetentionPolicy();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                return Failure;
+            }
 
-            // Create configuration provider and validate configuration
-            IAgentConfigurationProvider configProvider = new FileAgentConfigurationProvider(configFilePath);
-            AgentConfiguration configuration = configProvider.GetConfiguration();
+            // appsettings.json is read from beside the executable, whatever directory it is started in.
+            HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+            {
+                Args = args,
+                ContentRootPath = AppContext.BaseDirectory,
+            });
 
-            // Create retention policy provider and get retention policy
-            IRetentionPolicyProvider retentionPolicyProvider = new FileRetentionPolicyProvider(configProvider);
-            RetentionPolicy retentionPolicy = retentionPolicyProvider.GetRetentionPolicy();
-
-            HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
-
-            // Register configuration as singleton
             builder.Services.AddSingleton(configuration);
-            builder.Services.AddSingleton<IAgentConfigurationProvider>(configProvider);
-            builder.Services.AddSingleton<IRetentionPolicyProvider>(retentionPolicyProvider);
-            builder.Services.AddSingleton(retentionPolicy);
-
-            // Register individual settings for dependency injection
             builder.Services.AddSingleton(configuration.Postgres);
             builder.Services.AddSingleton(configuration.ByteShelf);
             builder.Services.AddSingleton(configuration.Backup);
+            builder.Services.AddSingleton(retentionPolicy);
+            builder.Services.AddSingleton(TimeProvider.System);
 
-            // Register ByteShelf HTTP client
-            HttpClient httpClient = HttpShelfFileProvider.CreateHttpClient(configuration.ByteShelf.BaseUrl);
+            HttpClient http = new HttpClient { BaseAddress = configuration.ByteShelf.ServerAddress };
+            IByteShelfClient byteShelf = new ByteShelfHttpClient(http, new ShelfKeyCredentials(configuration.ByteShelf.ShelfKey));
+            builder.Services.AddSingleton(byteShelf.Shelf(configuration.ByteShelf.Shelf));
 
-            IShelfFileProvider shelfFileProvider = new HttpShelfFileProvider(httpClient, configuration.ByteShelf.ApiKey);
-            builder.Services.AddSingleton(shelfFileProvider);
-
-            // Register backup services
             builder.Services.AddSingleton<IDatabaseBackupService, PostgresDatabaseBackupService>();
-            builder.Services.AddSingleton<ISubtenantStructureService, SubtenantStructureService>();
             builder.Services.AddSingleton<IBackupOrchestrator, BackupOrchestrator>();
 
-            // Register worker service
-            builder.Services.AddHostedService<Worker>();
+            using IHost host = builder.Build();
+            ILogger<Program> logger = host.Services.GetRequiredService<ILogger<Program>>();
+            IHostApplicationLifetime lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 
-            IHost host = builder.Build();
-            host.Run();
+            // Started for its console lifetime alone: a SIGTERM or Ctrl+C cancels the run through ApplicationStopping.
+            await host.StartAsync();
+
+            int exitCode;
+            try
+            {
+                logger.LogInformation("Backing up {Host}:{Port} as source {Source} to shelf {Shelf} on {Url}",
+                    configuration.Postgres.Host, configuration.Postgres.Port, configuration.Backup.Source, configuration.ByteShelf.Shelf, configuration.ByteShelf.Url);
+
+                BackupReport report = await host.Services.GetRequiredService<IBackupOrchestrator>().PerformBackupAsync(lifetime.ApplicationStopping);
+
+                if (report.Succeeded)
+                {
+                    logger.LogInformation("Backup completed: stored {StoredCount} databases and pruned", report.StoredPaths.Count);
+                    exitCode = Success;
+                }
+                else
+                {
+                    logger.LogError("Backup failed: stored {StoredCount} databases, {FailedCount} failed ({FailedDatabases}), pruning {Pruning}",
+                        report.StoredPaths.Count, report.FailedDatabases.Count, string.Join(", ", report.FailedDatabases), report.Pruning);
+                    exitCode = Failure;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Backup failed");
+                exitCode = Failure;
+            }
+
+            await host.StopAsync();
+            return exitCode;
         }
     }
 }

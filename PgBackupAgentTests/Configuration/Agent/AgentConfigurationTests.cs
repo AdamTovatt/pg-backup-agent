@@ -10,8 +10,8 @@ namespace PgBackupAgentTests.Configuration.Agent
         {
             // Arrange
             PostgresSettings postgresSettings = new("localhost", 5432, "user", "password", "database");
-            ByteShelfSettings byteShelfSettings = new("https://example.com", "api-key-with-sufficient-length");
-            BackupSettings backupSettings = new("/path/to/policy.json", 60);
+            ByteShelfSettings byteShelfSettings = new("https://example.com", "backups", "bsk_secret-for-tests");
+            BackupSettings backupSettings = new("primary", "/path/to/policy.json", 60);
 
             // Act
             AgentConfiguration configuration = new(postgresSettings, byteShelfSettings, backupSettings);
@@ -30,8 +30,8 @@ namespace PgBackupAgentTests.Configuration.Agent
         {
             // Arrange
             PostgresSettings postgresSettings = new("localhost", 5432, "user", "password", "database");
-            ByteShelfSettings byteShelfSettings = new("https://example.com", "api-key-with-sufficient-length");
-            BackupSettings backupSettings = new("/path/to/policy.json", 60);
+            ByteShelfSettings byteShelfSettings = new("https://example.com", "backups", "bsk_secret-for-tests");
+            BackupSettings backupSettings = new("primary", "/path/to/policy.json", 60);
 
             // Act & Assert
             Assert.ThrowsException<ArgumentNullException>(() => new AgentConfiguration(null!, byteShelfSettings, backupSettings));

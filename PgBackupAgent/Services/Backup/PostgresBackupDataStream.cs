@@ -10,16 +10,12 @@ namespace PgBackupAgent.Services.Backup
         private readonly PgClient _pgClient;
         private readonly string _databaseName;
         private readonly DateTime _createdAt;
+        private readonly TimeSpan _timeout;
 
         /// <summary>
         /// Gets the name of the database being backed up.
         /// </summary>
         public string DatabaseName => _databaseName;
-
-        /// <summary>
-        /// Gets the filename for the backup file.
-        /// </summary>
-        public string Filename => $"{_databaseName}_{_createdAt:yyyy-MM-dd_HH-mm-ss}.sql";
 
         /// <summary>
         /// Gets the creation timestamp of the backup.
@@ -37,7 +33,8 @@ namespace PgBackupAgent.Services.Backup
         /// <param name="pgClient">The PgClient instance for database operations.</param>
         /// <param name="databaseName">The name of the database to backup.</param>
         /// <param name="createdAt">The creation timestamp of the backup.</param>
-        public PostgresBackupDataStream(PgClient pgClient, string databaseName, DateTime createdAt)
+        /// <param name="timeout">How long the dump may take.</param>
+        public PostgresBackupDataStream(PgClient pgClient, string databaseName, DateTime createdAt, TimeSpan timeout)
         {
             ArgumentNullException.ThrowIfNull(pgClient);
 
@@ -47,6 +44,7 @@ namespace PgBackupAgent.Services.Backup
             _pgClient = pgClient;
             _databaseName = databaseName;
             _createdAt = createdAt;
+            _timeout = timeout;
         }
 
         /// <summary>
@@ -62,7 +60,7 @@ namespace PgBackupAgent.Services.Backup
             try
             {
                 StreamOutputProvider outputProvider = new StreamOutputProvider(memoryStream);
-                await _pgClient.DumpAsync(outputProvider, TimeSpan.FromMinutes(5), DumpFormat.Tar, cancellationToken);
+                await _pgClient.DumpAsync(outputProvider, _timeout, DumpFormat.Tar, cancellationToken);
                 
                 memoryStream.Position = 0; // Reset position for reading
                 return memoryStream;

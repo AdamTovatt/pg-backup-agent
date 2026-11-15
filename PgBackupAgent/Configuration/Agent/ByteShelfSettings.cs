@@ -1,40 +1,57 @@
+using ByteShelfCommon;
+
 namespace PgBackupAgent.Configuration.Agent
 {
     /// <summary>
-    /// ByteShelf storage settings.
+    /// Where the backups are stored: a shelf on a ByteShelf server, reached with a key for that shelf.
     /// </summary>
     public class ByteShelfSettings
     {
         /// <summary>
-        /// ByteShelf API base URL.
+        /// The ByteShelf server's address, for example <c>https://files.example.com</c>.
         /// </summary>
-        public string BaseUrl { get; set; }
+        public string Url { get; }
 
         /// <summary>
-        /// ByteShelf API key.
+        /// The name of the shelf the backups are stored on.
         /// </summary>
-        public string ApiKey { get; set; }
+        public string Shelf { get; }
+
+        /// <summary>
+        /// The secret of a read-write key for <see cref="Shelf"/>, starting <c>bsk_</c>. Read-write, since
+        /// pruning deletes files.
+        /// </summary>
+        public string ShelfKey { get; }
+
+        /// <summary>
+        /// The server's address as the client needs it: absolute, ending in <c>/</c>.
+        /// </summary>
+        public Uri ServerAddress { get; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ByteShelfSettings"/> class.
         /// </summary>
-        /// <param name="baseUrl">ByteShelf API base URL.</param>
-        /// <param name="apiKey">ByteShelf API key.</param>
-        public ByteShelfSettings(string baseUrl, string apiKey)
+        /// <param name="url">The ByteShelf server's address, http or https.</param>
+        /// <param name="shelf">The name of the shelf the backups are stored on.</param>
+        /// <param name="shelfKey">The secret of a read-write key for the shelf.</param>
+        /// <exception cref="ArgumentException">A value is missing or not allowed.</exception>
+        public ByteShelfSettings(string url, string shelf, string shelfKey)
         {
-            if (baseUrl is null)
-                throw new ArgumentNullException(nameof(baseUrl));
-            if (string.IsNullOrEmpty(baseUrl))
-                throw new ArgumentException(nameof(baseUrl));
-            if (apiKey is null)
-                throw new ArgumentNullException(nameof(apiKey));
-            if (string.IsNullOrEmpty(apiKey))
-                throw new ArgumentException(nameof(apiKey));
-            if (apiKey.Length < 16)
-                throw new ArgumentException("API key must be at least 16 characters long", nameof(apiKey));
+            if (string.IsNullOrWhiteSpace(url))
+                throw new ArgumentException("ByteShelf.Url is required.", nameof(url));
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? address) || (address.Scheme != Uri.UriSchemeHttp && address.Scheme != Uri.UriSchemeHttps))
+                throw new ArgumentException($"ByteShelf.Url '{url}' is not an http or https address.", nameof(url));
+            if (!ShelfName.TryValidate(shelf, out string? shelfError))
+                throw new ArgumentException($"ByteShelf.Shelf '{shelf}' is not a shelf name: {shelfError}", nameof(shelf));
+            if (string.IsNullOrWhiteSpace(shelfKey))
+                throw new ArgumentException("ByteShelf.ShelfKey is required.", nameof(shelfKey));
+            if (!shelfKey.StartsWith(ShelfKeys.SecretPrefix, StringComparison.Ordinal))
+                throw new ArgumentException($"ByteShelf.ShelfKey must be a shelf key's secret, which starts '{ShelfKeys.SecretPrefix}'.", nameof(shelfKey));
 
-            BaseUrl = baseUrl;
-            ApiKey = apiKey;
+            Url = url;
+            Shelf = shelf;
+            ShelfKey = shelfKey;
+            ServerAddress = address.AbsolutePath.EndsWith('/') ? address : new Uri(address.AbsoluteUri + "/");
         }
     }
-} 
+}

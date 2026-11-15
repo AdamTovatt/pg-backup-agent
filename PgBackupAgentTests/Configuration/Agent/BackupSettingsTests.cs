@@ -5,41 +5,43 @@ namespace PgBackupAgentTests.Configuration.Agent
     [TestClass]
     public class BackupSettingsTests
     {
+        private const string Source = "primary";
+        private const string PolicyPath = "/path/to/retention-policy.json";
+
         [TestMethod]
         public void Constructor_WithValidParameters_SetsPropertiesCorrectly()
         {
-            // Arrange
-            string retentionPolicyPath = "/path/to/retention-policy.json";
-            int timeoutMinutes = 60;
+            BackupSettings settings = new(Source, PolicyPath, 60);
 
-            // Act
-            BackupSettings settings = new(retentionPolicyPath, timeoutMinutes);
-
-            // Assert
-            Assert.AreEqual(retentionPolicyPath, settings.RetentionPolicyPath);
-            Assert.AreEqual(timeoutMinutes, settings.TimeoutMinutes);
+            Assert.AreEqual(Source, settings.Source);
+            Assert.AreEqual(PolicyPath, settings.RetentionPolicyPath);
+            Assert.AreEqual(60, settings.TimeoutMinutes);
         }
 
         [TestMethod]
-        public void Constructor_WithNullParameters_ThrowsArgumentNullException()
+        [DataRow(null)]
+        [DataRow("")]
+        [DataRow("  ")]
+        [DataRow("server/a")]
+        [DataRow("..")]
+        public void Constructor_WithSourceThatCannotNameAFolder_ThrowsArgumentException(string? source)
         {
-            // Act & Assert
-            Assert.ThrowsException<ArgumentNullException>(() => new BackupSettings(null!, 60));
+            Assert.ThrowsException<ArgumentException>(() => new BackupSettings(source!, PolicyPath, 60));
         }
 
         [TestMethod]
-        public void Constructor_WithEmptyStringParameters_ThrowsArgumentException()
+        [DataRow(null)]
+        [DataRow("")]
+        public void Constructor_WithoutRetentionPolicyPath_ThrowsArgumentException(string? retentionPolicyPath)
         {
-            // Act & Assert
-            Assert.ThrowsException<ArgumentException>(() => new BackupSettings("", 60));
+            Assert.ThrowsException<ArgumentException>(() => new BackupSettings(Source, retentionPolicyPath!, 60));
         }
 
         [TestMethod]
         public void Constructor_WithInvalidTimeout_ThrowsArgumentOutOfRangeException()
         {
-            // Act & Assert
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new BackupSettings("/path/to/policy.json", 0));
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new BackupSettings("/path/to/policy.json", -1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new BackupSettings(Source, PolicyPath, 0));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new BackupSettings(Source, PolicyPath, -1));
         }
     }
-} 
+}

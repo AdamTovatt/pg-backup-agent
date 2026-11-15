@@ -4,14 +4,16 @@
     "port": 5432,
     "username": "postgres",
     "password": "your_password_here",
-    "database": "your_database_name"
+    "database": "postgres"
   },
   "byteShelf": {
-    "baseUrl": "https://your-byteshelf-server.com",
-    "apiKey": "your_api_key_here_minimum_16_characters"
+    "url": "https://files.example.com",
+    "shelf": "postgres-backups",
+    "shelfKey": "bsk_your_read_write_shelf_key"
   },
   "backup": {
-    "retentionPolicyPath": "/path/to/retention-policy.json",
+    "source": "db-server-1",
+    "retentionPolicyPath": "/etc/pg-backup-agent/retention-policy.json",
     "timeoutMinutes": 60
   }
 }

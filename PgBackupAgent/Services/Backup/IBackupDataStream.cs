@@ -1,30 +1,10 @@
 namespace PgBackupAgent.Services.Backup
 {
     /// <summary>
-    /// Interface for backup data streams that can create streams on-demand.
+    /// Produces a backup's bytes when they are needed. What the backup is, <see cref="BackupFile"/> holds.
     /// </summary>
     public interface IBackupDataStream
     {
-        /// <summary>
-        /// Gets the name of the database being backed up.
-        /// </summary>
-        string DatabaseName { get; }
-
-        /// <summary>
-        /// Gets the filename for the backup file.
-        /// </summary>
-        string Filename { get; }
-
-        /// <summary>
-        /// Gets the creation timestamp of the backup.
-        /// </summary>
-        DateTime CreatedAt { get; }
-
-        /// <summary>
-        /// Gets the estimated size of the backup in bytes.
-        /// </summary>
-        long EstimatedSizeBytes { get; }
-
         /// <summary>
         /// Creates a stream containing the backup data.
         /// </summary>

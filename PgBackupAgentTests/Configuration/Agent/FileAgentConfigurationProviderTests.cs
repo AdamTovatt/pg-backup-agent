@@ -37,10 +37,12 @@ namespace PgBackupAgentTests.Configuration.Agent
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""api-key-with-sufficient-length""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""bsk_secret-for-tests""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": ""/path/to/policy.json"",
                     ""timeoutMinutes"": 60
                 }
@@ -58,7 +60,7 @@ namespace PgBackupAgentTests.Configuration.Agent
             Assert.IsNotNull(configuration.Backup);
             Assert.AreEqual("localhost", configuration.Postgres.Host);
             Assert.AreEqual(5432, configuration.Postgres.Port);
-            Assert.AreEqual("https://byteshelf.example.com", configuration.ByteShelf.BaseUrl);
+            Assert.AreEqual("https://byteshelf.example.com", configuration.ByteShelf.Url);
             Assert.AreEqual("/path/to/policy.json", configuration.Backup.RetentionPolicyPath);
         }
 
@@ -108,10 +110,12 @@ namespace PgBackupAgentTests.Configuration.Agent
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""api-key-with-sufficient-length""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""bsk_secret-for-tests""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": ""/path/to/policy.json"",
                     ""timeoutMinutes"": 60
                 }
@@ -124,7 +128,7 @@ namespace PgBackupAgentTests.Configuration.Agent
 
             Console.WriteLine(exception.Message);
 
-            Assert.IsTrue(exception.Message.Contains("Failed to read configuration file: Value cannot be null. (Parameter 'host')"));
+            Assert.IsTrue(exception.Message.Contains("Invalid configuration: Value cannot be null. (Parameter 'host')"));
         }
 
         [TestMethod]
@@ -140,10 +144,12 @@ namespace PgBackupAgentTests.Configuration.Agent
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""api-key-with-sufficient-length""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""bsk_secret-for-tests""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": ""/path/to/policy.json"",
                     ""timeoutMinutes"": 60
                 }
@@ -153,14 +159,14 @@ namespace PgBackupAgentTests.Configuration.Agent
             // Act & Assert
             FileAgentConfigurationProvider provider = new(_tempConfigPath);
             InvalidOperationException exception = Assert.ThrowsException<InvalidOperationException>(() => provider.GetConfiguration());
-            Assert.IsTrue(exception.Message.Contains("Failed to read configuration file: Specified argument was out of the range of valid values. (Parameter 'port')"));
+            Assert.IsTrue(exception.Message.Contains("Invalid configuration: Specified argument was out of the range of valid values. (Parameter 'port')"));
         }
 
         [TestMethod]
-        public void GetConfiguration_WithShortApiKey_ThrowsInvalidOperationException()
+        public void GetConfiguration_WithKeyThatIsNoShelfKey_ThrowsInvalidOperationException()
         {
             // Arrange
-            string jsonWithShortApiKey = @"{
+            string jsonWithOldApiKey = @"{
                 ""postgres"": {
                     ""host"": ""localhost"",
                     ""port"": 5432,
@@ -169,15 +175,17 @@ namespace PgBackupAgentTests.Configuration.Agent
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""short""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""a-1.x-api-key""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": ""/path/to/policy.json"",
                     ""timeoutMinutes"": 60
                 }
             }";
-            File.WriteAllText(_tempConfigPath, jsonWithShortApiKey);
+            File.WriteAllText(_tempConfigPath, jsonWithOldApiKey);
 
             // Act & Assert
             FileAgentConfigurationProvider provider = new(_tempConfigPath);
@@ -185,7 +193,7 @@ namespace PgBackupAgentTests.Configuration.Agent
 
             Console.WriteLine(exception.Message);
 
-            Assert.IsTrue(exception.Message.Contains("Failed to read configuration file: API key must be at least 16 characters long"));
+            Assert.IsTrue(exception.Message.Contains("Invalid configuration: ByteShelf.ShelfKey must be a shelf key's secret, which starts 'bsk_'."));
         }
     }
 } 

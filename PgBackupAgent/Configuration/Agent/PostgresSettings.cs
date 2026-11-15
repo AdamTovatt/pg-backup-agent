@@ -42,21 +42,21 @@ namespace PgBackupAgent.Configuration.Agent
         {
             if (host is null)
                 throw new ArgumentNullException(nameof(host));
-            if (string.IsNullOrEmpty(host))
+            if (string.IsNullOrWhiteSpace(host))
                 throw new ArgumentException(nameof(host));
             if (port <= 0 || port > 65535)
                 throw new ArgumentOutOfRangeException(nameof(port));
             if (username is null)
                 throw new ArgumentNullException(nameof(username));
-            if (string.IsNullOrEmpty(username))
+            if (string.IsNullOrWhiteSpace(username))
                 throw new ArgumentException(nameof(username));
             if (password is null)
                 throw new ArgumentNullException(nameof(password));
-            if (string.IsNullOrEmpty(password))
+            if (string.IsNullOrWhiteSpace(password))
                 throw new ArgumentException(nameof(password));
             if (database is null)
                 throw new ArgumentNullException(nameof(database));
-            if (string.IsNullOrEmpty(database))
+            if (string.IsNullOrWhiteSpace(database))
                 throw new ArgumentException(nameof(database));
 
             Host = host;

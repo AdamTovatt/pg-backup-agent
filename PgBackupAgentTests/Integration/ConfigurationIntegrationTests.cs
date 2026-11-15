@@ -43,10 +43,12 @@ namespace PgBackupAgentTests.Integration
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""api-key-with-sufficient-length""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""bsk_secret-for-tests""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": """ + _tempPolicyPath.Replace("\\", "\\\\") + @""",
                     ""timeoutMinutes"": 60
                 }
@@ -81,7 +83,7 @@ namespace PgBackupAgentTests.Integration
             Assert.IsNotNull(agentConfig.Backup);
             Assert.AreEqual("localhost", agentConfig.Postgres.Host);
             Assert.AreEqual(5432, agentConfig.Postgres.Port);
-            Assert.AreEqual("https://byteshelf.example.com", agentConfig.ByteShelf.BaseUrl);
+            Assert.AreEqual("https://byteshelf.example.com", agentConfig.ByteShelf.Url);
             Assert.AreEqual(_tempPolicyPath, agentConfig.Backup.RetentionPolicyPath);
             Assert.AreEqual(60, agentConfig.Backup.TimeoutMinutes);
 
@@ -107,10 +109,12 @@ namespace PgBackupAgentTests.Integration
                     ""database"": ""mydb""
                 },
                 ""byteShelf"": {
-                    ""baseUrl"": ""https://byteshelf.example.com"",
-                    ""apiKey"": ""short""
+                    ""url"": ""https://byteshelf.example.com"",
+                    ""shelf"": ""backups"",
+                    ""shelfKey"": ""a-1.x-api-key""
                 },
                 ""backup"": {
+                    ""source"": ""primary"",
                     ""retentionPolicyPath"": ""/path/to/policy.json"",
                     ""timeoutMinutes"": -1
                 }
@@ -125,7 +129,7 @@ namespace PgBackupAgentTests.Integration
             
             // The validation happens in constructors during deserialization, so we only get the first error
             // In this case, it's likely the empty host validation
-            Assert.IsTrue(exception.Message.Contains("Failed to read configuration file:"));
+            Assert.IsTrue(exception.Message.Contains("Invalid configuration:"));
         }
     }
 } 
